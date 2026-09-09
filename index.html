@@ -811,7 +811,7 @@
             </div>
         </div>
         <div id="module-freight" class="calculator-home embedded-calculator">
-            <h2 class="calculator-module-title"><span>运费与仓储计算</span><span class="heading-controls"><label class="market-country">国家/站点<select id="marketCountry" onchange="updateMarketCountry()"><option value="US" selected>美国 / US</option><option value="CA">加拿大 / CA</option><option value="MX">墨西哥 / MX</option><option value="EU">欧洲 / EU</option><option value="UK">英国 / UK</option></select></label><label class="market-fx"><span class="term-tip" tabindex="0" data-tip="汇率：人民币与目标市场货币之间的换算比例。">汇率</span><span id="profitFxLabel" class="market-fx-unit">（人民币/USD）</span><input id="profitFx" data-market-default="1" type="number" min="0" step="0.01" value="7.20" oninput="this.dataset.marketDefault='0'; updateProfitCalculator()"></label><button id="profitRateUpdate" class="market-rate-update" type="button" onclick="updateProfitExchangeRate()">更新汇率</button><span id="profitMarketBadge" class="market-badge">US / USD</span></span></h2>
+            <h2 class="calculator-module-title"><span>运费与仓储计算</span><span class="heading-controls"><label class="market-country">国家/站点<select id="marketCountry" onchange="updateMarketCountry()"><option value="US" selected>美国 / US</option><option value="CA">加拿大 / CA</option><option value="MX">墨西哥 / MX</option><option value="EU">欧洲 / EU</option><option value="UK">英国 / UK</option><option value="JP">日本 / JP</option></select></label><label class="market-fx"><span class="term-tip" tabindex="0" data-tip="汇率：人民币与目标市场货币之间的换算比例。">汇率</span><span id="profitFxLabel" class="market-fx-unit">（人民币/USD）</span><input id="profitFx" data-market-default="1" type="number" min="0" step="0.01" value="7.20" oninput="this.dataset.marketDefault='0'; updateProfitCalculator()"></label><button id="profitRateUpdate" class="market-rate-update" type="button" onclick="updateProfitExchangeRate()">更新汇率</button><span id="profitMarketBadge" class="market-badge">US / USD</span></span></h2>
             <div class="calculator-grid freight-grid">
                 <section class="calculator-panel">
                     <div id="cargo-check" class="cargo-check">
@@ -1043,7 +1043,7 @@
         CA: { name: '加拿大站', currency: 'CAD', fx: 5.1, storage: 0.95, referral: 15 },
         MX: { name: '墨西哥站', currency: 'MXN', fx: 0.39, storage: null, referral: null, autoFees: false },
         EU: { name: '欧洲站', currency: 'EUR', fx: 7.8, storage: null, referral: null, autoFees: false },
-        UK: { name: '英国站', currency: 'GBP', fx: 9.1, storage: null, referral: null, autoFees: false }
+        UK: { name: '英国站', currency: 'GBP', fx: 9.1, storage: null, referral: null, autoFees: false },\n        JP: { name: '日本站', currency: 'JPY', fx: 0.048, storage: null, referral: null, autoFees: false }
     };
     const US_FBA_STORAGE_2026 = Object.freeze({
         source: '2026 美国站非危险品月度仓储费率（用户提供的 InventoryHero 参考表）',
