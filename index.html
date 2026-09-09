@@ -762,10 +762,44 @@
         .quick-cost-row { display: grid; grid-template-columns: 110px minmax(0, 1fr) auto; gap: 8px; align-items: center; }
         .quick-cost-track { height: 8px; background: var(--surface-muted); overflow: hidden; }
         .quick-cost-track i { display: block; height: 100%; background: var(--accent); }
+        .profit-results .profit-breakdown.profit-result-bars { grid-template-columns: 1fr; gap: 8px; }
+        .profit-result-bars .metric {
+            display: grid;
+            grid-template-columns: minmax(100px, 0.7fr) minmax(120px, 2fr) 64px minmax(240px, 1.3fr);
+            gap: 10px;
+            align-items: center;
+            min-height: 0;
+            padding: 10px 12px;
+            border: 1px solid var(--border-color);
+            background: var(--surface-raised);
+            color: var(--text-muted);
+            font-size: 1rem;
+        }
+        .profit-result-bars .metric > .term-tip { font-size: 1rem; }
+        .profit-result-bars .profit-bar-track { height: 12px; border: 1px solid var(--border-color); background: var(--surface-muted); overflow: hidden; }
+        .profit-result-bars .profit-bar-track i { display: block; width: 0; height: 100%; background: var(--accent); transition: width 0.2s ease; }
+        .profit-result-bars .profit-bar-ratio { color: var(--accent); font: 700 1rem 'Share Tech Mono', monospace; text-align: right; white-space: nowrap; }
+        .profit-result-bars .metric-action { display: grid; gap: 3px; }
+        .profit-result-bars .metric-money { justify-content: flex-start; gap: 10px; margin-top: 0; }
+        .profit-result-bars .metric-money strong { font-size: 1.15rem; }
+        .profit-result-bars .metric-rmb { font-size: 0.95rem; }
+        .profit-result-bars .metric-total { margin-top: 1px; padding-top: 3px; font-size: 0.9rem; }
+        .profit-result-bars .metric.negative .profit-bar-track i { background: var(--danger); }
+        .profit-result-bars .metric.negative .profit-bar-ratio { color: var(--danger); }
         .quick-risk-list { margin: 0; padding-left: 20px; color: var(--text-muted); display: grid; gap: 7px; }
         .quick-risk-list .warning { color: var(--danger); }
         .quick-note { margin: 10px 0 0; color: var(--text-subtle); font-size: .82rem; }
         @media (max-width: 900px) { .quick-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); } .quick-results { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+        @media (max-width: 1050px) {
+            .profit-result-bars .metric { grid-template-columns: 110px minmax(100px, 1fr) 60px; }
+            .profit-result-bars .metric-action { grid-column: 1 / -1; }
+        }
+        @media (max-width: 560px) {
+            .profit-result-bars .metric { grid-template-columns: minmax(0, 1fr) 58px; }
+            .profit-result-bars .profit-bar-track { grid-column: 1 / -1; grid-row: 2; }
+            .profit-result-bars .profit-bar-ratio { grid-column: 2; grid-row: 1; }
+            .profit-result-bars .metric-action { grid-column: 1 / -1; }
+        }
         @media (max-width: 560px) { .quick-fields, .quick-results, .quick-detail-grid { grid-template-columns: 1fr; } .quick-form-card, .quick-result-card { padding: 14px; } }
     </style>
 </head>
@@ -1090,7 +1124,7 @@
                         <label id="profitJpReferralTaxField" class="storage-switch" hidden><input id="profitJpReferralTax" type="checkbox" checked oninput="updateProfitCalculator()"><span class="term-tip" tabindex="0" data-tip="Amazon日本官方费率表中的销售佣金为未税金额；默认另加10%消费税。">佣金加计10%消费税</span></label>
                         <label><span id="profitPlacementLabel" class="term-tip" tabindex="0" data-tip="FBA 入库配置费（Inventory Placement Service Fee）是亚马逊将库存分配至入库地点时按件收取的费用，不是 FBA 配送费。请按 Send to Amazon 或结算报表中的每件实际费用填写；该项会单独计入总成本。">FBA 入库配置费（美元/件）</span><input id="profitPlacementFee" type="number" min="0" step="0.01" value="0" oninput="updateProfitCalculator()"></label>
                     </div>
-                    <div class="profit-breakdown">
+                    <div class="profit-breakdown profit-result-bars">
                         <div class="metric"><span class="term-tip" tabindex="0" data-tip="采购/件 = 含税采购成本 ×（1 − 退税/折扣比例）÷ 汇率；总采购成本 = 采购/件 × 月销量。">采购/件</span><button class="metric-action" type="button" data-inputs="profitPurchaseRmb,profitTaxDiscount,profitFx,adMonthlyUnits" onclick="guideCalculationInputs(this)" aria-label="定位采购成本所需输入"><span class="metric-money"><strong id="profitPurchaseValue">-</strong><span class="metric-rmb" id="profitPurchaseCnyValue">-</span></span><span class="metric-total" id="profitPurchaseTotalValue">总采购成本（请填写月销量）</span></button></div>
                         <div class="metric"><span class="term-tip" tabindex="0" data-tip="头程/件 = 头程单价（人民币/每件）÷ 汇率；总费用 = 头程/件 × 月销量。">头程/件</span><button class="metric-action" type="button" data-inputs="cargoDimensionInput,cargoWeightInput,profitFreightRate,profitFx,adMonthlyUnits" onclick="guideCalculationInputs(this)" aria-label="定位头程所需输入"><span class="metric-money"><strong id="profitFreightValue">-</strong><span class="metric-rmb" id="profitFreightCnyValue">-</span></span><span class="metric-total" id="profitFreightTotalValue">总费用（请填写月销量）</span></button></div>
                         <div class="metric"><span class="term-tip" tabindex="0" data-tip="FBA/件 = 当前站点、尺寸等级和 FBA 计费重对应的配送费；FBA 计费重取实重与 139 in³/lb 体积重的较大值。勾选旺季发货时会增加 2026 旺季平均增量；总费用 = FBA/件 × 月销量。">FBA/件</span><button class="metric-action" type="button" data-inputs="cargoDimensionInput,cargoWeightInput,adMonthlyUnits" onclick="guideCalculationInputs(this)" aria-label="定位 FBA 配送费所需输入"><span class="metric-money"><strong id="profitFbaValue">-</strong><span class="metric-rmb" id="profitFbaCnyValue">-</span></span><span class="metric-total" id="profitFbaTotalValue">总费用（请填写月销量）</span></button></div>
@@ -3050,6 +3084,50 @@
 
     }
 
+    const PROFIT_BAR_METRICS = Object.freeze([
+        ['profitPurchaseValue', 'profitPurchaseRatio', 'profitPurchaseBar'],
+        ['profitFreightValue', 'profitFreightRatio', 'profitFreightBar'],
+        ['profitFbaValue', 'profitFbaRatio', 'profitFbaBar'],
+        ['profitStorageValue', 'profitStorageRatio', 'profitStorageBar'],
+        ['profitAdValue', 'profitAdRatio', 'profitAdBar'],
+        ['profitTotalCostValue', 'profitTotalCostRatio', 'profitTotalCostBar'],
+        ['profitValue', 'profitProfitRatio', 'profitProfitBar'],
+        ['profitMarginValue', 'profitMarginRatio', 'profitMarginBar'],
+    ]);
+
+    function initProfitResultBars() {
+        for (const [valueId, ratioId, barId] of PROFIT_BAR_METRICS) {
+            const metric = document.getElementById(valueId)?.closest('.metric');
+            const action = metric?.querySelector('.metric-action');
+            if (!metric || !action || document.getElementById(barId)) continue;
+            const track = document.createElement('span');
+            track.className = 'profit-bar-track';
+            track.setAttribute('aria-hidden', 'true');
+            const fill = document.createElement('i');
+            fill.id = barId;
+            track.appendChild(fill);
+            const ratio = document.createElement('strong');
+            ratio.className = 'profit-bar-ratio';
+            ratio.id = ratioId;
+            ratio.textContent = '-';
+            metric.insertBefore(track, action);
+            metric.insertBefore(ratio, action);
+        }
+    }
+
+    function setProfitBarRatio(ratioId, barId, ratio) {
+        const ratioEl = document.getElementById(ratioId);
+        const barEl = document.getElementById(barId);
+        const valid = Number.isFinite(ratio);
+        if (ratioEl) ratioEl.textContent = valid ? `${(ratio * 100).toFixed(1)}%` : '-';
+        if (barEl) barEl.style.width = valid ? `${Math.max(0, Math.min(100, ratio * 100)).toFixed(1)}%` : '0%';
+    }
+
+    function setProfitBarMetric(ratioId, barId, value, price) {
+        const ratio = Number.isFinite(value) && Number.isFinite(price) && price > 0 ? value / price : null;
+        setProfitBarRatio(ratioId, barId, ratio);
+    }
+
     function percent(value) {
         return Number.isFinite(value) ? (value * 100).toFixed(2) + '%' : '-';
     }
@@ -3662,6 +3740,14 @@
         setProfitTotalMetric('profitTotalCostTotalValue', result.totalCost, fx, monthlyUnits);
         setProfitTotalMetric('profitTotalValue', result.profit, fx, monthlyUnits, '总利润');
         document.getElementById('profitMarginValue').textContent = percent(result.margin);
+        setProfitBarMetric('profitPurchaseRatio', 'profitPurchaseBar', result.purchase, profitPrice);
+        setProfitBarMetric('profitFreightRatio', 'profitFreightBar', result.freight, profitPrice);
+        setProfitBarMetric('profitFbaRatio', 'profitFbaBar', autoFeesSupported ? result.fba : null, profitPrice);
+        setProfitBarMetric('profitStorageRatio', 'profitStorageBar', result.storage, profitPrice);
+        setProfitBarMetric('profitAdRatio', 'profitAdBar', result.ad, profitPrice);
+        setProfitBarMetric('profitTotalCostRatio', 'profitTotalCostBar', result.totalCost, profitPrice);
+        setProfitBarMetric('profitProfitRatio', 'profitProfitBar', result.profit, profitPrice);
+        setProfitBarRatio('profitMarginRatio', 'profitMarginBar', result.margin);
         document.getElementById('profitBreakEvenAcosValue').textContent = percent(result.breakEvenAcos);
         setProfitMoneyMetric('profitMaxCpcValue', 'profitMaxCpcCnyValue', result.maxCpc, fx);
         setProfitMoneyMetric('profitMaxPurchaseValue', 'profitMaxPurchaseCnyValue', result.maxPurchaseRmb === null ? null : result.maxPurchaseRmb / fx, fx);
@@ -3759,6 +3845,14 @@
         setProfitTotalMetric('profitTotalCostTotalValue', weightedTotalCost, fx, monthlyUnits);
         setProfitTotalMetric('profitTotalValue', weightedProfit, fx, monthlyUnits, '总利润');
         document.getElementById('profitMarginValue').textContent = percent(weightedMargin);
+        setProfitBarMetric('profitPurchaseRatio', 'profitPurchaseBar', weightedPurchase, weightedPrice);
+        setProfitBarMetric('profitFreightRatio', 'profitFreightBar', weightedFreight, weightedPrice);
+        setProfitBarMetric('profitFbaRatio', 'profitFbaBar', autoFeesSupported ? weightedFba : null, weightedPrice);
+        setProfitBarMetric('profitStorageRatio', 'profitStorageBar', weightedStorage, weightedPrice);
+        setProfitBarMetric('profitAdRatio', 'profitAdBar', weightedAd, weightedPrice);
+        setProfitBarMetric('profitTotalCostRatio', 'profitTotalCostBar', weightedTotalCost, weightedPrice);
+        setProfitBarMetric('profitProfitRatio', 'profitProfitBar', weightedProfit, weightedPrice);
+        setProfitBarRatio('profitMarginRatio', 'profitMarginBar', weightedMargin);
         document.getElementById('profitBreakEvenAcosValue').textContent = percent(weightedBreakEven);
         setProfitMoneyMetric('profitMaxCpcValue', 'profitMaxCpcCnyValue', weightedMaxCpc, fx);
         setProfitMoneyMetric('profitMaxPurchaseValue', 'profitMaxPurchaseCnyValue', weightedMaxPurchaseRmb === null ? null : weightedMaxPurchaseRmb / fx, fx);
@@ -4272,6 +4366,7 @@
     }
 
     applyTheme(currentTheme(), false);
+    initProfitResultBars();
     updateQuickMarket();
     updateQuickCalculator();
     setCalculatorMode('professional');

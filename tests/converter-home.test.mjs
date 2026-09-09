@@ -872,10 +872,15 @@ test('profit results show per-unit market-currency and CNY values, and monthly t
     'id="profitTotalCostCnyValue"', 'id="profitCnyValue"', 'id="profitMaxCpcCnyValue"', 'id="profitMaxPurchaseCnyValue"',
     'id="profitFreightTotalValue"', 'id="profitFbaTotalValue"', 'id="profitStorageTotalValue"', 'id="profitAdTotalValue"', 'id="profitTotalCostTotalValue"', 'id="profitTotalValue"',
     'class="metric-money"', 'class="metric-total"', 'function rmbMoney', 'function setProfitMoneyMetric', 'function setProfitTotalMetric',
+    'class="profit-breakdown profit-result-bars"', 'function initProfitResultBars', 'function setProfitBarRatio', 'function setProfitBarMetric',
+    'const PROFIT_BAR_METRICS', "'profitPurchaseRatio'", "'profitProfitRatio'", "'profitMarginRatio'",
   ]) assert.match(html, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
 
   assert.doesNotMatch(html, /id="profitChargeableWeightValue"/);
   assert.doesNotMatch(html, /id="profitPackageVolumeValue"/);
+  assert.match(html, /profit-bar-track/);
+  assert.match(html, /profit-bar-ratio/);
+  assert.match(html, /\(ratio \* 100\)\.toFixed\(1\)/);
   assert.match(html, /\.metric-total\s*\{[^}]*font:\s*700\s+0\.84rem\/1\.35/s);
   assert.match(html, /totalEl\.textContent = `\$\{label\}（\$\{fmtNumber\(quantity\)\}件） \$\{rmbMoney\(total, fx\)\}`/);
   assert.match(html, /const usdTotal = total \* fx \/ cnyPerUsd/);
