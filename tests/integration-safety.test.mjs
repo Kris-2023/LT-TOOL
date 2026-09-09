@@ -7,7 +7,7 @@ test('every inline script parses, including market configuration',()=>{
  for(const m of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)) new vm.Script(m[1]);
 });
 test('Japan cannot fall through to US fulfillment fees',()=>{
- assert.match(html,/country === 'JP' \|\| country === 'MX'/);
+ assert.match(html,/country === 'JP' \?/);\n assert.doesNotMatch(html,/country === 'JP' \|\| country === 'MX'/);
  assert.match(html,/<option value="JP">/);
  assert.match(html,/JP: \{/);
 });
@@ -30,3 +30,4 @@ test('monthly totals execute safely and convert CNY-base exchange rates correctl
  render('total',10,7.2,0); assert.doesNotMatch(el.textContent,/USD/);
  render('total',10,7.2,100); assert.match(el.textContent,/USD 1000.00/);
 });
+
