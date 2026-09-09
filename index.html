@@ -1385,11 +1385,11 @@
         const shippingWeightLb = Math.max(weightLb, dimensionalWeightLb);
         const rawPrice = options.price ?? (typeof document !== 'undefined' ? Number(document.getElementById('adPrice')?.value) : null);
         const country = options.country || (typeof document !== 'undefined' ? document.getElementById('marketCountry')?.value : 'US');
-        const baseFee = estimateFbaFee(tier, shippingWeightLb, country === 'US' ? rawPrice : undefined);
+        const baseFee = country === 'JP' ? null : estimateFbaFee(tier, shippingWeightLb, country === 'US' ? rawPrice : undefined);
         const scale = country === 'CA' ? 1.34 : 1;
         const peakShipping = options.peakShipping ?? (typeof document !== 'undefined' && Boolean(document.getElementById('fbaPeakShipping')?.checked));
         const peakSurcharge = peakShipping && baseFee !== null ? US_FBA_FULFILLMENT_2026.peakAverageSurcharge * scale : 0;
-        const fee = country === 'JP' || country === 'MX' || country === 'EU' || country === 'UK' || baseFee === null
+        const fee = country === 'MX' || country === 'EU' || country === 'UK' || baseFee === null
             ? null
             : baseFee * scale + peakSurcharge;
         return { dimensionsIn, weightLb, volumeIn3, dimensionalWeightLb, shippingWeightLb, tier, baseFee: baseFee === null ? null : baseFee * scale, peakSurcharge, peakShipping, fee, analysis };
