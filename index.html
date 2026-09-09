@@ -1043,7 +1043,8 @@
         CA: { name: '加拿大站', currency: 'CAD', fx: 5.1, storage: 0.95, referral: 15 },
         MX: { name: '墨西哥站', currency: 'MXN', fx: 0.39, storage: null, referral: null, autoFees: false },
         EU: { name: '欧洲站', currency: 'EUR', fx: 7.8, storage: null, referral: null, autoFees: false },
-        UK: { name: '英国站', currency: 'GBP', fx: 9.1, storage: null, referral: null, autoFees: false },\n        JP: { name: '日本站', currency: 'JPY', fx: 0.048, storage: null, referral: null, autoFees: false }
+        UK: { name: '英国站', currency: 'GBP', fx: 9.1, storage: null, referral: null, autoFees: false },
+        JP: { name: '日本站', currency: 'JPY', fx: 0.048, storage: null, referral: null, autoFees: false }
     };
     const US_FBA_STORAGE_2026 = Object.freeze({
         source: '2026 美国站非危险品月度仓储费率（用户提供的 InventoryHero 参考表）',
@@ -1353,6 +1354,13 @@
     function estimateFbaFee(tier, shippingWeightLb, price) {
         if (!Number.isFinite(shippingWeightLb) || shippingWeightLb <= 0) return null;
         if (tier === '标准件') {
+            const lowPrice = price !== null && price !== undefined && String(price).trim() !== '' && Number.isFinite(Number(price)) && Number(price) > 0 && Number(price) < 9.9;
+            if (lowPrice) {
+                const low = [[0.25,2.91],[0.5,3.13],[0.75,3.38],[1,3.78],[1.5,4.60],[2,5.00],[2.5,5.28],[3,5.85]];
+                const bracket = low.find(([limit]) => shippingWeightLb <= limit);
+                return bracket ? bracket[1] : 6.15 + Math.ceil((shippingWeightLb - 3) / 0.5) * 0.16;
+            }
+
             const brackets = [[0.25, 3.68], [0.5, 3.98], [0.75, 4.28], [1, 4.75], [1.5, 5.37], [2, 5.68], [2.5, 5.98], [3, 6.28]];
             const bracket = brackets.find(([maxWeight]) => shippingWeightLb <= maxWeight);
             if (bracket) return bracket[1];
@@ -1376,12 +1384,12 @@
         const dimensionalWeightLb = volumeIn3 / US_FBA_FULFILLMENT_2026.dimensionalWeightDivisorIn3PerLb;
         const shippingWeightLb = Math.max(weightLb, dimensionalWeightLb);
         const rawPrice = options.price ?? (typeof document !== 'undefined' ? Number(document.getElementById('adPrice')?.value) : null);
-        const baseFee = estimateFbaFee(tier, shippingWeightLb, rawPrice);
         const country = options.country || (typeof document !== 'undefined' ? document.getElementById('marketCountry')?.value : 'US');
+        const baseFee = estimateFbaFee(tier, shippingWeightLb, country === 'US' ? rawPrice : undefined);
         const scale = country === 'CA' ? 1.34 : 1;
         const peakShipping = options.peakShipping ?? (typeof document !== 'undefined' && Boolean(document.getElementById('fbaPeakShipping')?.checked));
         const peakSurcharge = peakShipping && baseFee !== null ? US_FBA_FULFILLMENT_2026.peakAverageSurcharge * scale : 0;
-        const fee = country === 'MX' || country === 'EU' || country === 'UK' || baseFee === null
+        const fee = country === 'JP' || country === 'MX' || country === 'EU' || country === 'UK' || baseFee === null
             ? null
             : baseFee * scale + peakSurcharge;
         return { dimensionsIn, weightLb, volumeIn3, dimensionalWeightLb, shippingWeightLb, tier, baseFee: baseFee === null ? null : baseFee * scale, peakSurcharge, peakShipping, fee, analysis };
@@ -1527,6 +1535,10 @@
         }
         const total = value * quantity;
         totalEl.textContent = `${label}（${fmtNumber(quantity)}件） ${rmbMoney(total, fx)}`;
+        const cnyPerUsd = Number(liveRates.USD) > 0 && Number(liveRates.CNY) > 0 ? Number(liveRates.CNY) / Number(liveRates.USD) : 7.2;
+        const usdTotal = total * fx / cnyPerUsd;
+        totalEl.textContent += ` / USD ${usdTotal.toFixed(2)}`;
+
     }
 
     function percent(value) {
