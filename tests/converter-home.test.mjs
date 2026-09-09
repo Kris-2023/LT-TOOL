@@ -34,7 +34,7 @@ test('unit conversion groups use concise Chinese titles in the expected order', 
 });
 
 test('unit names use Chinese labels and abbreviations on one line', () => {
-  for (const required of ['<h1>单位换算</h1>', '米（m）', '千克（kg）', '立方厘米（cm3）', '立方英尺（ft3）', '摄氏（C）']) {
+  for (const required of ['<h1>Amazon成本计算器</h1>', '米（m）', '千克（kg）', '立方厘米（cm3）', '立方英尺（ft3）', '摄氏（C）']) {
     assert.match(html, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
   assert.match(html, /\.conversion-table td:first-child\s*\{\s*white-space:\s*nowrap;/);
@@ -128,6 +128,12 @@ function loadCargoHelpers() {
 
 function loadFbaHelpers() {
   const code = [
+    extractConstantSource('DEFAULT_FEE_CONFIG'),
+    extractFunctionSource('feeDeepClone'),
+    'let FEE_CONFIG = feeDeepClone(DEFAULT_FEE_CONFIG);',
+    extractFunctionSource('getPriceBand'),
+    extractFunctionSource('readProductCategory'),
+    extractFunctionSource('readProductPrice'),
     extractConstantSource('US_FBA_FULFILLMENT_2026'),
     extractFunctionSource('fmtNumber'),
     extractFunctionSource('getFbaTierAnalysis'),
@@ -142,15 +148,20 @@ function loadFbaHelpers() {
 
 function loadProfitHelpers() {
   const code = [
+    extractConstantSource('JP_REFERRAL_RULES_2026'),
+    extractFunctionSource('calculateJpReferralFee'),
     extractFunctionSource('calculateAdMetrics'),
     extractFunctionSource('calculateProfitMetrics'),
-    '({ calculateAdMetrics, calculateProfitMetrics })',
+    '({ calculateJpReferralFee, calculateAdMetrics, calculateProfitMetrics })',
   ].join('\n');
   return vm.runInNewContext(code);
 }
 
 function loadStorageHelpers() {
   const code = [
+    extractConstantSource('DEFAULT_FEE_CONFIG'),
+    extractFunctionSource('feeDeepClone'),
+    'let FEE_CONFIG = feeDeepClone(DEFAULT_FEE_CONFIG);',
     extractConstantSource('US_FBA_STORAGE_2026'),
     extractFunctionSource('storageMonthNumber'),
     extractFunctionSource('storageDaysInMonth'),
@@ -172,15 +183,19 @@ function loadNumberFormatter() {
   return vm.runInNewContext(code);
 }
 
-test('dimension inputs accept multi-part text values', () => {
+test('dimension inputs accept multi-part text values with a mobile multiplication key', () => {
   const lengthInputs = html.match(/<input[^>]+class="len-input"[^>]+>/g) ?? [];
   assert.equal(lengthInputs.length, 9);
 
   for (const input of lengthInputs) {
     assert.match(input, /type="text"/);
-    assert.match(input, /inputmode="decimal"/);
+    assert.match(input, /inputmode="text"/);
     assert.match(input, /placeholder="11x11x11"/);
   }
+  assert.match(html, /class="dimension-row"/);
+  assert.match(html, /class="dimension-multiply"[^>]*data-target="cargoDimensionInput"/);
+  assert.match(html, /function insertDimensionSeparator\(targetId\)/);
+  assert.match(html, /field\.value \+= '×'/);
 });
 
 test('dimension conversion handles x and star separated values', () => {
@@ -307,7 +322,7 @@ test('FBA calculator follows the referenced 2026 US tiers and fee brackets', () 
   const fba = calculateFbaMetrics([45.72, 35.56, 20.32], 9.0718474);
   assert.equal(fba.tier, '标准件');
   assert.equal(Math.round(fba.weightLb), 20);
-  assert.equal(fba.fee, 19.5);
+  assert.equal(fba.fee, 20.1825);
 });
 
 test('FBA uses its own dimensional shipping weight and applies the 2026 peak option separately from cargo freight', () => {
@@ -328,7 +343,7 @@ test('FBA uses its own dimensional shipping weight and applies the 2026 peak opt
   ]) assert.match(html, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   assert.match(html, /calculateFbaMetrics\(dimensionsCm, weightKg, options\)[\s\S]*?dimensionalWeightLb[\s\S]*?shippingWeightLb[\s\S]*?peakSurcharge/s);
   assert.match(html, /头程体积系数，默认系数为 6000。该系数只用于头程，不能直接套用到 FBA。/);
-  assert.match(html, /FBA 配送费按实重与体积重中的较大者计费；本工具用 139 in³\/lb（约 5021 cm³\/kg）/);
+  assert.match(html, /美国\/加拿大使用 139 in³\/lb 估算体积重/);
 });
 
 test('FBA basis stays side-by-side until a phone-width breakpoint', () => {
@@ -360,6 +375,13 @@ test('advertising calculator derives CVR, POS, CPA, ACOS, ROAS and blended cost 
   assert.equal(metrics.acoas, 0.1);
 });
 
+test('optional advertising fields use unambiguous numeric entry placeholders', () => {
+  assert.match(html, /id="adClicks"[^>]*placeholder="输入月点击量（选填）"/);
+  assert.match(html, /id="adOrders"[^>]*placeholder="输入广告订单量（选填）"/);
+  assert.match(html, /id="adMonthlyUnits"[^>]*placeholder="输入月销量（选填）"/);
+  assert.doesNotMatch(html, /placeholder="可选"/);
+});
+
 test('advertising calculator accepts a manual CVR when clicks are unavailable', () => {
   const { calculateAdMetrics } = loadProfitHelpers();
   const metrics = calculateAdMetrics({ cpc: 0.8, clicks: 0, orders: 2, cvr: 25, monthlyUnits: 20, pos: 100, price: 20 });
@@ -372,6 +394,178 @@ test('advertising calculator leaves POS unavailable until monthly sales are prov
   const metrics = calculateAdMetrics({ cpc: 0.8, clicks: 100, orders: 0, cvr: 10, monthlyUnits: 0, price: 20 });
   assert.equal(metrics.pos, null);
   assert.equal(metrics.blendedCost, null);
+});
+
+test('Japan referral fees use category tiers, minimum fee, and consumption tax correctly', () => {
+  const { calculateJpReferralFee } = loadProfitHelpers();
+  assert.deepEqual(JSON.parse(JSON.stringify(calculateJpReferralFee(3000, 'home-kitchen', true))), { base: 462, tax: 46.2, total: 508.2, effectiveRate: 0.1694 });
+  assert.deepEqual(JSON.parse(JSON.stringify(calculateJpReferralFee(666, 'consumer-electronics', true))), { base: 33.3, tax: 3.33, total: 36.63, effectiveRate: 0.055 });
+  assert.equal(calculateJpReferralFee(500, 'consumer-electronics', false).base, 30);
+  assert.equal(calculateJpReferralFee(3000, 'beauty', true).base, 312);
+  assert.equal(calculateJpReferralFee(4000, 'clothing', true).base, 456);
+  assert.equal(calculateJpReferralFee(12000, 'jewelry', true).base, 1168);
+});
+
+test('profit treats unknown automatic FBA and storage costs as unavailable', () => {
+  const { calculateProfitMetrics } = loadProfitHelpers();
+  const unknownFba = calculateProfitMetrics({ price: 3000, fx: 0.048, purchaseRmb: 48, referralFee: 300, fbaCostUnavailable: true, storageCost: 10 });
+  assert.equal(unknownFba.totalCost, null);
+  assert.equal(unknownFba.profit, null);
+  const unknownStorage = calculateProfitMetrics({ price: 3000, fx: 0.048, purchaseRmb: 48, referralFee: 300, fbaFee: 420, storageCostUnavailable: true });
+  assert.equal(unknownStorage.totalCost, null);
+  assert.equal(unknownStorage.profit, null);
+});
+
+test('return handling fee is weighted by return rate', () => {
+  const { calculateProfitMetrics } = loadProfitHelpers();
+  const result = calculateProfitMetrics({ price: 1000, fx: 1, returnRate: 8, returnHandling: 100, storageCost: 0 });
+  assert.equal(result.returns, 88);
+});
+
+test('Japan price changes refresh the displayed FBA fee and use precise JPY exchange rates', () => {
+  assert.match(html, /id="adPrice"[^>]*oninput="updateAdCalculator\(\); updateCargoCheck\(\)"/);
+  assert.match(html, /function marketFxDecimals\(currency\)/);
+  assert.match(html, /currency === 'JPY' \? 6 : 2/);
+  assert.match(html, /fx\.value = \(1 \/ marketRate\)\.toFixed\(marketFxDecimals\(requestedCurrency\)\)/);
+  assert.match(html, /profitFx\.value = \(liveRates\.CNY \/ liveRates\[market\.currency\]\)\.toFixed\(marketFxDecimals\(market\.currency\)\)/);
+});
+
+test('quick calculator is the default seller workflow with simple required inputs and core outputs', () => {
+  for (const required of [
+    'id="quickModeButton"', 'id="professionalModeButton"', 'id="quickCalculator"',
+    'id="quickMarket"', 'id="quickCategory"', 'id="quickPrice"', 'id="quickPurchaseRmb"',
+    'id="quickLength"', 'id="quickWidth"', 'id="quickHeight"', 'id="quickWeight"',
+    'id="quickFreightRate"', 'id="quickMonthlyUnits"', 'id="quickStorageDays"', 'id="quickAdRate"',
+    'id="quickProfitValue"', 'id="quickMarginValue"', 'id="quickMonthlyProfitValue"', 'id="quickBreakEvenPriceValue"',
+    'id="quickCostBreakdown"', 'id="quickRiskList"', 'function calculateQuickEstimate', 'function updateQuickCalculator',
+  ]) assert.match(html, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.match(html, /id="quickModeButton"[^>]*class="[^"]*active/);
+});
+
+test('quick Japan estimate calculates automated referral, FBA, storage, ads, profit and break-even', () => {
+  const code = [
+    extractConstantSource('JP_FBA_FULFILLMENT_2026'),
+    extractConstantSource('JP_FBA_STORAGE_2026'),
+    extractConstantSource('JP_REFERRAL_RULES_2026'),
+    extractFunctionSource('calculateJpReferralFee'),
+    extractFunctionSource('getJpFbaMetrics'),
+    extractFunctionSource('calculateJpFbaStorageFee'),
+    extractFunctionSource('calculateQuickEstimate'),
+    '({ calculateQuickEstimate })',
+  ].join('\n');
+  const { calculateQuickEstimate } = vm.runInNewContext(code);
+  const result = calculateQuickEstimate({
+    market: 'JP', category: 'home-kitchen', price: 3000, purchaseRmb: 48, fx: 0.048,
+    dimensionsCm: [20, 10, 10], weightKg: 0.2, freightRateRmb: 8,
+    monthlyUnits: 100, storageDays: 30, adRate: 10, month: 9,
+  });
+  assert.equal(result.purchase, 1000);
+  assert.equal(result.referral, 508.2);
+  assert.equal(result.fba, 420);
+  assert.equal(result.freight, 55.55555555555555);
+  assert.ok(Math.abs(result.storage - 11.352) < 1e-10);
+  assert.equal(result.ad, 300);
+  assert.ok(Math.abs(result.profit - 704.8924444444442) < 1e-9);
+  assert.ok(Math.abs(result.margin - 0.23496414814814806) < 1e-9);
+  assert.ok(Math.abs(result.monthlyProfit - 70489.24444444443) < 1e-8);
+  assert.equal(result.breakEvenPrice, 2036);
+});
+
+test('quick Japan break-even recalculates category commission and low-price FBA at each candidate price', () => {
+  const code = [
+    extractConstantSource('JP_FBA_FULFILLMENT_2026'),
+    extractConstantSource('JP_FBA_STORAGE_2026'),
+    extractConstantSource('JP_REFERRAL_RULES_2026'),
+    extractFunctionSource('calculateJpReferralFee'),
+    extractFunctionSource('getJpFbaMetrics'),
+    extractFunctionSource('calculateJpFbaStorageFee'),
+    extractFunctionSource('calculateQuickEstimate'),
+    '({ calculateQuickEstimate })',
+  ].join('\n');
+  const { calculateQuickEstimate } = vm.runInNewContext(code);
+  const result = calculateQuickEstimate({
+    market: 'JP', category: 'consumer-electronics', price: 1000, purchaseRmb: 20, fx: 0.05,
+    dimensionsCm: [25, 18, 2], weightKg: 0.25, freightRateRmb: 10,
+    monthlyUnits: 200, storageDays: 15, adRate: 5, month: 10,
+  });
+  assert.equal(result.fba, 222);
+  assert.equal(result.breakEvenPrice, 789);
+});
+
+test('quick US estimate reuses automated US FBA and simple storage assumptions', () => {
+  const code = [
+    extractConstantSource('DEFAULT_FEE_CONFIG'),
+    extractFunctionSource('feeDeepClone'),
+    'let FEE_CONFIG = feeDeepClone(DEFAULT_FEE_CONFIG);',
+    extractFunctionSource('getPriceBand'),
+    extractFunctionSource('readProductCategory'),
+    extractFunctionSource('readProductPrice'),
+    extractConstantSource('US_FBA_STORAGE_2026'),
+    extractConstantSource('US_FBA_FULFILLMENT_2026'),
+    extractConstantSource('JP_FBA_FULFILLMENT_2026'),
+    extractConstantSource('JP_FBA_STORAGE_2026'),
+    extractConstantSource('JP_REFERRAL_RULES_2026'),
+    extractFunctionSource('calculateJpReferralFee'),
+    extractFunctionSource('getJpFbaMetrics'),
+    extractFunctionSource('calculateJpFbaStorageFee'),
+    extractFunctionSource('getFbaTierAnalysis'),
+    extractFunctionSource('getFbaSizeTier'),
+    extractFunctionSource('estimateFbaFee'),
+    extractFunctionSource('calculateFbaMetrics'),
+    extractFunctionSource('calculateQuickEstimate'),
+    '({ calculateQuickEstimate })',
+  ].join('\n');
+  const { calculateQuickEstimate } = vm.runInNewContext(code);
+  const result = calculateQuickEstimate({
+    market: 'US', price: 29.99, purchaseRmb: 50, fx: 7.2,
+    dimensionsCm: [20, 10, 10], weightKg: 0.2, freightRateRmb: 8,
+    monthlyUnits: 100, storageDays: 30, adRate: 10, month: 9,
+  });
+  assert.equal(result.unavailable, false);
+  assert.ok(Number.isFinite(result.fba) && result.fba > 0);
+  assert.ok(Number.isFinite(result.storage) && result.storage >= 0);
+  assert.ok(Number.isFinite(result.profit));
+});
+
+test('Japan labels use the correct sales-total and manual inbound-cost wording', () => {
+  assert.match(html, /id="adPriceLabel"/);
+  assert.match(html, /买家支付总销售额（含税）/);
+  assert.match(html, /其他每件FBA\/入仓费用/);
+  assert.match(html, /id="profitReturnRate"[^>]*value="0"/);
+});
+
+test('market-specific money fields and US peak selection are isolated across switches', () => {
+  for (const required of [
+    'const MARKET_INPUT_STATE', 'let activeMarketCode', 'function saveMarketInputState', 'function restoreMarketInputState',
+    "'adPrice'", "'adCpc'", "'profitPlacementFee'", "'profitReturnHandling'", 'peakShipping',
+  ]) assert.match(html, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+});
+
+test('Japan standard 40cm tier keeps the low-price fee through 1,000 JPY', () => {
+  const code = [
+    extractConstantSource('JP_FBA_FULFILLMENT_2026'),
+    extractFunctionSource('getJpFbaMetrics'),
+    '({ getJpFbaMetrics })',
+  ].join('\n');
+  const { getJpFbaMetrics } = vm.runInNewContext(code);
+  assert.equal(getJpFbaMetrics([20, 10, 10], 0.2, 1000).fee, 371);
+  assert.equal(getJpFbaMetrics([20, 10, 10], 0.2, 1000.01).fee, 420);
+});
+
+test('Japan profit uses category referral total and keeps US manual referral behavior', () => {
+  const { calculateProfitMetrics } = loadProfitHelpers();
+  const jp = calculateProfitMetrics({
+    price: 3000, fx: 0.048, purchaseRmb: 48, taxDiscount: 0, freightRateRmb: 0, chargeableWeightKg: 0,
+    referralRate: 15.4, referralFee: 508.2, fbaFee: 420, storageCost: 10, adCost: 0, promoRate: 0,
+    returnRate: 0, returnHandling: 0, placementFee: 0, targetMargin: 20, cvr: 0.1,
+  });
+  assert.equal(jp.purchase, 1000);
+  assert.equal(jp.referral, 508.2);
+  assert.equal(jp.totalCost, 1938.2);
+  assert.equal(jp.profit, 1061.8);
+
+  const us = calculateProfitMetrics({ price: 100, fx: 5, purchaseRmb: 0, referralRate: 15, fbaFee: 0, storageCost: 0 });
+  assert.equal(us.referral, 15);
 });
 
 test('profit calculator supports chargeable weight, cubic-foot storage, advertising cost, and FBA placement inputs', () => {
@@ -397,6 +591,13 @@ test('profit calculator supports chargeable weight, cubic-foot storage, advertis
   assert.equal(withPlacement.placement, 1.25);
   assert.equal(withPlacement.totalCost - result.totalCost, 1.25);
   assert.equal(result.profit - withPlacement.profit, 1.25);
+
+  const weightedReturnHandling = calculateProfitMetrics({
+    price: 30, fx: 7.2, purchaseRmb: 0, taxDiscount: 0, freightRateRmb: 0, chargeableWeightKg: 0,
+    packageVolumeM3: 0, referralRate: 0, fbaFee: 0, storageCost: 0,
+    adCost: 0, promoRate: 0, returnRate: 10, returnHandling: 5, placementFee: 0, targetMargin: 0, cvr: 0,
+  });
+  assert.equal(weightedReturnHandling.returns, 3.5);
 
   const forecastStorage = calculateProfitMetrics({
     price: 30, fx: 7.2, purchaseRmb: 50, taxDiscount: 10, freightRateRmb: 8, chargeableWeightKg: 1.2,
@@ -443,6 +644,39 @@ test('US FBA storage forecast uses daily-average inventory, seasonal rates, roll
   assert.equal(shortageForecast.rows[0].soldUnits, 120);
   assert.equal(shortageForecast.rows[0].shortageUnits, 30);
   assert.equal(shortageForecast.rows[0].endingUnits, 0);
+});
+
+test('Japan storage forecast supports the same 12-month sales and replenishment workflow', () => {
+  const code = [
+    extractConstantSource('JP_FBA_STORAGE_2026'),
+    extractFunctionSource('storageMonthNumber'),
+    extractFunctionSource('storageDaysInMonth'),
+    extractFunctionSource('calculateJpFbaStorageFee'),
+    extractFunctionSource('calculateJpFbaStorageForecast'),
+    '({ calculateJpFbaStorageForecast })',
+  ].join('\n');
+  const { calculateJpFbaStorageForecast } = vm.runInNewContext(code);
+  const forecast = calculateJpFbaStorageForecast({
+    startMonth: 9,
+    openingUnits: 3000,
+    unitVolumeCm3: 1000,
+    tier: '标准尺寸',
+    isFashion: false,
+    plan: Array.from({ length: 12 }, () => ({ sales: 1000, restock: 0 })),
+  });
+
+  assert.deepEqual(JSON.parse(JSON.stringify(forecast.rows.slice(0, 3).map(row => row.averageUnits))), [2500, 1500, 500]);
+  assert.equal(forecast.rows[0].storageCost, 14190);
+  assert.equal(forecast.rows[1].storageCost, 15130.5);
+  assert.equal(forecast.rows[2].storageCost, 5043.5);
+  assert.equal(forecast.rows[3].shortageUnits, 1000);
+  assert.equal(forecast.totalSoldUnits, 3000);
+  assert.equal(forecast.remainingUnits, 0);
+
+  for (const required of [
+    '日本站 FBA 月度仓储', '2026 日本站官方费率', 'function currentStorageForecast',
+    "selectedCountry === 'US' || selectedCountry === 'JP'", "market === 'JP'",
+  ]) assert.match(html, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
 });
 
 test('US storage uses a forecast-period weighted allocation, including zero-sales months', () => {
@@ -612,7 +846,7 @@ test('FBA inputs expose editable centimetre-inch and kilogram-pound pairs', () =
 test('calculator module headings are siblings and freight owns the market selector', () => {
   assert.match(html, /<h2 class="calculator-module-title"><span>运费与仓储计算<\/span><span class="heading-controls">[\s\S]*?id="marketCountry"[\s\S]*?id="profitFx"[\s\S]*?id="profitRateUpdate"/);
   assert.match(html, /<h2 class="calculator-module-title"><span class="term-tip"[^>]*>广告费换算<\/span><\/h2>/);
-  assert.match(html, /<h2 class="calculator-module-title"><span class="term-tip"[^>]*>利润测算<\/span><\/h2>/);
+  assert.match(html, /<h2 class="calculator-module-title"><span class="term-tip"[^>]*>利润测算<\/span>[\s\S]*?<\/h2>/);
   assert.match(html, /\.calculator-module-title\s*\{[\s\S]*?font:\s*700\s+1rem/s);
   assert.equal((html.match(/id="marketCountry"/g) ?? []).length, 1);
   assert.equal((html.match(/id="profitFx"/g) ?? []).length, 1);
@@ -625,8 +859,9 @@ test('calculator module headings are siblings and freight owns the market select
   assert.match(html, /\.freight-grid \.cargo-check\s*\{[^}]*border:\s*0/s);
 });
 
-test('profit results show per-unit market-currency and CNY values, but monthly totals only show CNY', () => {
+test('profit results show per-unit market-currency and CNY values, and monthly totals add USD', () => {
   for (const required of [
+    'id="profitPurchaseValue"', 'id="profitPurchaseCnyValue"', 'id="profitPurchaseTotalValue"',
     'id="profitFreightCnyValue"', 'id="profitFbaCnyValue"', 'id="profitStorageCnyValue"', 'id="profitAdCnyValue"',
     'id="profitTotalCostCnyValue"', 'id="profitCnyValue"', 'id="profitMaxCpcCnyValue"', 'id="profitMaxPurchaseCnyValue"',
     'id="profitFreightTotalValue"', 'id="profitFbaTotalValue"', 'id="profitStorageTotalValue"', 'id="profitAdTotalValue"', 'id="profitTotalCostTotalValue"', 'id="profitTotalValue"',
@@ -637,6 +872,7 @@ test('profit results show per-unit market-currency and CNY values, but monthly t
   assert.doesNotMatch(html, /id="profitPackageVolumeValue"/);
   assert.match(html, /\.metric-total\s*\{[^}]*font:\s*700\s+0\.84rem\/1\.35/s);
   assert.match(html, /totalEl\.textContent = `\$\{label\}（\$\{fmtNumber\(quantity\)\}件） \$\{rmbMoney\(total, fx\)\}`/);
+  assert.match(html, /const usdTotal = total \* fx \/ cnyPerUsd/);
   const totalMetric = extractFunctionSource('setProfitTotalMetric');
   assert.doesNotMatch(totalMetric, /money\(total\)/);
 });
@@ -652,9 +888,8 @@ test('automatic result values guide users to their dependent inputs and explain 
   assert.match(html, /targetField\.focus\(\{ preventScroll: true \}\)/);
 });
 
-test('footer keeps contacts together on a second line', () => {
-  assert.match(html, /<footer>[\s\S]*?SYSTEM CORE DESIGNED BY CHE RUI[\s\S]*?class="footer-contacts"[\s\S]*?小红书：bibliobibule[\s\S]*?VX：bibliobibule[\s\S]*?<\/footer>/);
-  assert.match(html, /footer\s*\{[\s\S]*?flex-direction:\s*column/s);
+test('legacy author and contact footer is removed', () => {
+  assert.doesNotMatch(html, /SYSTEM CORE DESIGNED BY CHE RUI|小红书：bibliobibule|VX：bibliobibule|footer-contacts/);
 });
 
 test('theme switch defaults to light, persists the choice, and redraws chart colors', () => {
@@ -672,7 +907,7 @@ test('theme switch defaults to light, persists the choice, and redraws chart col
 test('profit exchange-rate update fetches the selected market rate and recalculates profit', () => {
   assert.match(html, /async function updateProfitExchangeRate\(\)/);
   assert.match(html, /fetch\('https:\/\/open\.er-api\.com\/v6\/latest\/CNY'\)/);
-  assert.match(html, /fx\.value = \(1 \/ marketRate\)\.toFixed\(2\)/);
+  assert.match(html, /fx\.value = \(1 \/ marketRate\)\.toFixed\(marketFxDecimals\(requestedCurrency\)\)/);
   assert.match(html, /updateProfitCalculator\(\);/);
   assert.match(html, /updateMarketCountry\(\)[\s\S]*?updateProfitExchangeRate\(\);/);
 });
@@ -688,14 +923,15 @@ test('site navigation and converter jumps are consolidated into a desktop sideba
   assert.doesNotMatch(html.slice(converterStart, html.indexOf('<div class="converter-workspace">', converterStart)), /converter-jump/);
 });
 
-test('guide tab and non-US/CA market currency switching are available without invented fees', () => {
+test('guide tab and marketplace switching expose automatic UK/EU fees without invented fallbacks', () => {
   for (const required of [
     "switchTab('guide')", 'id="module-guide"', '使用流程', '结果定位与提示',
-    'value="MX"', 'value="EU"', 'value="UK"', "currency: 'MXN'", "currency: 'EUR'", "currency: 'GBP'", 'autoFees: false',
-    '待手动配置', '该站点暂不估算', "(1 / marketRate).toFixed(2)", "manualRate.value = (liveRates[target] / liveRates[source]).toFixed(2)",
+    'value="MX"', 'value="EU"', 'value="UK"', "currency: 'MXN'", "currency: 'EUR'", "currency: 'GBP'", 'autoFees: true',
+    'const EU_FBA_FULFILLMENT_2026', 'calculateEuFbaStorageFee', 'calculateEuReferralFee',
+    '待手动配置', '该站点暂不估算', "marketFxDecimals(requestedCurrency)", "manualRate.value = (liveRates[target] / liveRates[source]).toFixed(2)",
   ]) assert.match(html, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
 
-  assert.match(html, /country === 'MX' \|\| country === 'EU' \|\| country === 'UK'/);
+  assert.match(html, /country === 'MX' \|\| baseFee === null/);
   assert.match(html, /const index = \['converter','pdf','image','removebg','currency','guide'\]\.indexOf\(name\)/);
 });
 
@@ -705,10 +941,10 @@ test('guide explains complex calculations, special interactions, and data-source
   const guideMarkup = html.slice(guideStart, guideEnd);
   for (const required of [
     '仓储费每月详细计算（美国）', 'FIFO', '月度仓储计费库存', '库存利用率周数', '22 周', '25 ft³',
-    '仓储/件', '非美国仓储', '35.3147', '计费重', '体积系数', '尺寸分级',
+    '仓储/件', '英国、欧洲与其他站点仓储', '€/m³', '计费重', '体积系数', '尺寸分级',
     'CPA', 'ACoAS', '混合广告费/件', '退货成本', '保本 ACOS', '最大 CPC',
     '更新汇率', 'ExchangeRate-API', 'Frankfurter', '结果定位与提示', '缺少的字段会优先高亮',
-    'PDF 聚合', '背景移除', '主题选择', 'InventoryHero', 'Seller Central',
+    'PDF 聚合', '背景移除', '主题选择', 'InventoryHero', 'Seller Central', '260630-FBA-Rate-Card-EN1.pdf',
   ]) assert.match(guideMarkup, new RegExp(required.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')));
   assert.match(guideMarkup, /href="https:\/\/www\.inventoryhero\.ai\/blog\/fba-storage-fees-2026#how-to-keep-storage-costs-down"/);
   assert.match(guideMarkup, /target="_blank" rel="noopener noreferrer"/);
@@ -726,7 +962,7 @@ test('US storage detail calculator is collapsed by default and opens for guided 
 });
 
 test('storage detail button stays immediately beside its title', () => {
-  const summary = html.match(/<summary class="storage-forecast-toggle">([\s\S]*?)<\/summary>/)?.[1] ?? '';
+  const summary = html.match(/<details id="storageForecastPanel"[\s\S]*?<summary class="storage-forecast-toggle">([\s\S]*?)<\/summary>/)?.[1] ?? '';
   const title = summary.indexOf('id="storageForecastTitle"');
   const button = summary.indexOf('id="storageExpandButton"');
   const source = summary.indexOf('storage-forecast-source');
@@ -778,4 +1014,47 @@ test('AI chat and dotted tooltip underlines are removed', () => {
     assert.doesNotMatch(html, new RegExp(removed));
   }
   assert.doesNotMatch(html, /\.fba-rule-row\s*\{[^}]*dashed/);
+});
+
+test('site is branded as Amazon成本计算器 with Jager-like dashboard styling', () => {
+  assert.match(html, /<title>Amazon成本计算器<\/title>/);
+  assert.match(html, /<h1>Amazon成本计算器<\/h1>/);
+  for (const required of [
+    '--page: #f6f7fa', '--surface: #fff', '--blue: #2962ff', '--line: #e8eaf0',
+    'border-radius: 8px', "font-family: Inter, ui-sans-serif, system-ui",
+  ]) assert.match(html, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.doesNotMatch(html, /OMNI-MATRIX V6|智能核心/);
+});
+
+test('Japan marketplace uses official 2026 JPY fulfillment and storage rules', () => {
+  for (const required of [
+    '<option value="JP">日本 / JP</option>',
+    "JP: { name: '日本站', currency: 'JPY'",
+    'const JP_FBA_FULFILLMENT_2026',
+    'const JP_FBA_STORAGE_2026',
+    'Amazon 日本站 2026',
+    'sell.amazon.co.jp/pricing',
+  ]) assert.match(html, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+
+  const code = [
+    extractConstantSource('JP_FBA_FULFILLMENT_2026'),
+    extractConstantSource('JP_FBA_STORAGE_2026'),
+    extractFunctionSource('getJpFbaMetrics'),
+    extractFunctionSource('calculateJpFbaStorageFee'),
+    '({ getJpFbaMetrics, calculateJpFbaStorageFee })',
+  ].join('\n');
+  const { getJpFbaMetrics, calculateJpFbaStorageFee } = vm.runInNewContext(code);
+
+  assert.deepEqual(JSON.parse(JSON.stringify(getJpFbaMetrics([25, 18, 2], 0.25, 1200))), { tier: '小型', fee: 288 });
+  assert.deepEqual(JSON.parse(JSON.stringify(getJpFbaMetrics([25, 18, 2], 0.25, 900))), { tier: '小型', fee: 222 });
+  assert.equal(getJpFbaMetrics([35, 30, 3.3], 1, 1500).fee, 318);
+  assert.equal(getJpFbaMetrics([40, 30, 20], 9, 1500).fee, 532);
+  assert.equal(getJpFbaMetrics([70, 60, 50], 30, 1500).fee, 1532);
+  assert.equal(getJpFbaMetrics([90, 80, 70], 50, 1500).fee, 4496);
+  assert.equal(getJpFbaMetrics([100, 90, 80], 50, 1500), null);
+
+  assert.equal(calculateJpFbaStorageFee(1000, '标准尺寸', 9, 30, false), 5.676);
+  assert.equal(calculateJpFbaStorageFee(1000, '标准尺寸', 10, 31, false), 10.087);
+  assert.equal(calculateJpFbaStorageFee(1000, '大型', 9, 30, false), 3.278);
+  assert.equal(calculateJpFbaStorageFee(1000, '标准尺寸', 10, 31, true), 5.5);
 });
