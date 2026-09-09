@@ -11,17 +11,20 @@ function indexOfSnippet(snippet) {
   return index;
 }
 
-test('converter is the default home module and first navigation item', () => {
+test('profit calculator is the default home module and first navigation item', () => {
   assert.match(html, /<link rel="icon" href="data:,">/);
   assert.match(
     html,
-    /<button class="nav-btn active" onclick="switchTab\('converter'\)">量子换算<\/button>/,
+    /<button class="nav-btn active" onclick="switchTab\('profit'\)">利润测算<\/button>/,
   );
-  assert.match(html, /<div id="module-converter" class="container converter-home active">/);
+  assert.match(html, /<div id="module-profit" class="container converter-home active">/);
+  assert.match(html, /<div id="module-converter" class="container converter-home">/);
   assert.doesNotMatch(html, /<div id="module-pdf" class="container active">/);
 
+  const profitNav = indexOfSnippet("switchTab('profit')");
   const converterNav = indexOfSnippet("switchTab('converter')");
   const pdfNav = indexOfSnippet("switchTab('pdf')");
+  assert.ok(profitNav < converterNav, 'profit nav should appear before unit converter nav');
   assert.ok(converterNav < pdfNav, 'converter nav should appear before PDF nav');
 });
 
@@ -34,7 +37,7 @@ test('unit conversion groups use concise Chinese titles in the expected order', 
 });
 
 test('unit names use Chinese labels and abbreviations on one line', () => {
-  for (const required of ['<h1>Amazon成本计算器</h1>', '米（m）', '千克（kg）', '立方厘米（cm3）', '立方英尺（ft3）', '摄氏（C）']) {
+  for (const required of ['<h1>单位换算</h1>', '米（m）', '千克（kg）', '立方厘米（cm3）', '立方英尺（ft3）', '摄氏（C）']) {
     assert.match(html, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
   assert.match(html, /\.conversion-table td:first-child\s*\{\s*white-space:\s*nowrap;/);
@@ -55,7 +58,7 @@ test('stone mass unit is removed from visible inputs and conversion data', () =>
 
 test('converter layout uses a twelve-column desktop grid and compact responsive fallbacks', () => {
   assert.match(html, /\.container\.active\s*\{\s*display:\s*block;\s*\}/);
-  assert.match(html, /#module-converter\.active\s*\{\s*display:\s*flex;\s*\}/);
+  assert.match(html, /#module-profit\.active\s*\{\s*display:\s*flex;\s*\}/);
   assert.match(html, /\.converter-grid\s*\{/);
   assert.match(html, /\.converter-grid[\s\S]*?grid-template-columns:\s*repeat\(12,\s*minmax\(0,\s*1fr\)\)/);
   assert.match(html, /\.conversion-table tbody[\s\S]*?grid-template-columns:\s*repeat\(12,\s*minmax\(0,\s*1fr\)\)/);
@@ -355,7 +358,7 @@ test('FBA and cargo inputs are statically located in the freight calculator befo
   const cargoStart = html.indexOf('id="cargo-check"');
   const freightStart = html.indexOf('id="module-freight"');
   const adStart = html.indexOf('id="module-adcalc"');
-  const profitStart = html.indexOf('id="module-profit"');
+  const profitStart = html.indexOf('id="profitDetail"');
   const freightEnd = html.indexOf('<div id="module-adcalc"', freightStart);
   assert.equal((html.match(/id="cargo-check"/g) ?? []).length, 1);
   assert.ok(cargoStart > freightStart && cargoStart < freightEnd);
@@ -430,7 +433,7 @@ test('Japan price changes refresh the displayed FBA fee and use precise JPY exch
   assert.match(html, /profitFx\.value = \(liveRates\.CNY \/ liveRates\[market\.currency\]\)\.toFixed\(marketFxDecimals\(market\.currency\)\)/);
 });
 
-test('quick calculator is the default seller workflow with simple required inputs and core outputs', () => {
+test('detailed calculator is the default seller workflow with simple required inputs and core outputs', () => {
   for (const required of [
     'id="quickModeButton"', 'id="professionalModeButton"', 'id="quickCalculator"',
     'id="quickMarket"', 'id="quickCategory"', 'id="quickPrice"', 'id="quickPurchaseRmb"',
@@ -439,7 +442,10 @@ test('quick calculator is the default seller workflow with simple required input
     'id="quickProfitValue"', 'id="quickMarginValue"', 'id="quickMonthlyProfitValue"', 'id="quickBreakEvenPriceValue"',
     'id="quickCostBreakdown"', 'id="quickRiskList"', 'function calculateQuickEstimate', 'function updateQuickCalculator',
   ]) assert.match(html, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
-  assert.match(html, /id="quickModeButton"[^>]*class="[^"]*active/);
+  assert.match(html, /id="professionalModeButton"[^>]*class="[^"]*active/);
+  assert.match(html, /id="quickCalculator"[^>]*hidden/);
+  assert.match(html, /id="professionalWorkspace" class="converter-workspace professional-workspace">/);
+  assert.match(html, /<option value="US" selected>美国 \/ US<\/option>/);
 });
 
 test('quick Japan estimate calculates automated referral, FBA, storage, ads, profit and break-even', () => {
@@ -749,16 +755,16 @@ test('storage UI uses period allocation and exposes non-destructive replenishmen
   assert.doesNotMatch(html, /id="storageProfitMonth"|function storageForecastProfitRow|function updateStorageGuide|利润取用月份|所选预测月/);
 });
 
-test('profit and ad calculators are embedded in the converter home with a single calculated cost flow', () => {
+test('profit and ad calculators are embedded in the profit home with a single calculated cost flow', () => {
   for (const required of [
-    'id="module-freight"', 'id="module-adcalc"', 'id="module-profit"', 'embedded-calculator', 'converter-workspace', 'id="adClicks"', 'id="adMonthlyUnits"', 'id="adPosMetricValue"',
+    'id="module-profit"', 'id="profitDetail"', 'id="module-freight"', 'id="module-adcalc"', 'embedded-calculator', 'converter-workspace', 'id="adClicks"', 'id="adMonthlyUnits"', 'id="adPosMetricValue"',
     'id="profitStorageRate"', '售价与广告成本统一取自广告费换算模块', 'id="profitTargetMargin"',
     '广告订单占比', 'id="adAcoasValue"', '运费与仓储计算',
   ]) assert.match(html, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   for (const removed of ['profitLinkAds', 'profitLinkFba', 'profitLinkCargo', 'profitManualAdRate', 'profitManualWeight', 'profitManualFba', '收入与采购', '广告与利润结果']) {
     assert.doesNotMatch(html, new RegExp(removed));
   }
-  assert.doesNotMatch(html, /switchTab\('adcalc'\)|switchTab\('profit'\)/);
+  assert.doesNotMatch(html, /switchTab\('adcalc'\)|switchTab\('module-profit'\)/);
 });
 
 test('currency converter covers requested market currencies and renders a stable historical trend curve', () => {
@@ -783,7 +789,7 @@ test('advertising and profit inputs use stacked labels and POS is calculated bel
 
 test('ad price is the first advertising input and tax discount defaults to zero', () => {
   const adStart = html.indexOf('id="module-adcalc"');
-  const adEnd = html.indexOf('id="module-profit"', adStart);
+  const adEnd = html.indexOf('id="profitDetail"', adStart);
   const adMarkup = html.slice(adStart, adEnd);
   assert.ok(adMarkup.indexOf('id="adPrice"') < adMarkup.indexOf('id="adCpc"'));
   assert.match(html, /id="profitTaxDiscount"[^>]*value="0"/);
@@ -791,7 +797,7 @@ test('ad price is the first advertising input and tax discount defaults to zero'
 
 test('PPC explanations use the complete field label as the hover and keyboard target', () => {
   const adStart = html.indexOf('id="module-adcalc"');
-  const adEnd = html.indexOf('id="module-profit"', adStart);
+  const adEnd = html.indexOf('id="profitDetail"', adStart);
   const adMarkup = html.slice(adStart, adEnd);
   const tooltipLabels = adMarkup.match(/class="field-label term-tip" tabindex="0" data-tip="[^"]+"/g) ?? [];
 
@@ -802,7 +808,7 @@ test('PPC explanations use the complete field label as the hover and keyboard ta
 
 test('advertising inputs and outputs share one calculation panel', () => {
   const adStart = html.indexOf('id="module-adcalc"');
-  const adEnd = html.indexOf('id="module-profit"', adStart);
+  const adEnd = html.indexOf('id="profitDetail"', adStart);
   const adMarkup = html.slice(adStart, adEnd);
 
   assert.equal((adMarkup.match(/<section class="calculator-panel">/g) ?? []).length, 1);
@@ -812,7 +818,7 @@ test('advertising inputs and outputs share one calculation panel', () => {
 });
 
 test('profit results separate direct operating outcomes from target and break-even controls', () => {
-  const profitStart = html.indexOf('id="module-profit"');
+  const profitStart = html.indexOf('id="profitDetail"');
   const profitEnd = html.indexOf('<!-- 格式转换 -->', profitStart);
   const profitMarkup = html.slice(profitStart, profitEnd);
 
@@ -912,15 +918,16 @@ test('profit exchange-rate update fetches the selected market rate and recalcula
   assert.match(html, /updateMarketCountry\(\)[\s\S]*?updateProfitExchangeRate\(\);/);
 });
 
-test('site navigation and converter jumps are consolidated into a desktop sidebar', () => {
+test('site navigation keeps profit and unit conversion as separate sidebar pages', () => {
   assert.match(html, /body\s*\{[\s\S]*?grid-template-columns:\s*72px\s+minmax\(0,\s*1fr\)/);
   assert.match(html, /\.nav-deck\s*\{[\s\S]*?position:\s*sticky/);
   const navStart = html.indexOf('<div class="nav-deck">');
-  const converterStart = html.indexOf('<div id="module-converter"');
-  const navMarkup = html.slice(navStart, converterStart);
-  for (const label of ['运费仓储', '广告换算', '利润测算', '功能说明', 'themeToggle']) assert.match(navMarkup, new RegExp(label));
-  assert.match(navMarkup, /量子换算[\s\S]*?<div class="converter-subnav">[\s\S]*?运费仓储/);
-  assert.doesNotMatch(html.slice(converterStart, html.indexOf('<div class="converter-workspace">', converterStart)), /converter-jump/);
+  const pdfStart = html.indexOf('<div id="module-pdf"');
+  const navMarkup = html.slice(navStart, pdfStart);
+  for (const label of ['利润测算', '单位换算', '功能说明', 'themeToggle']) assert.match(navMarkup, new RegExp(label));
+  assert.doesNotMatch(navMarkup, /converter-subnav|converter-jump/);
+  assert.match(html, /<div id="module-converter" class="container converter-home">[\s\S]*?<h1>单位换算<\/h1>/);
+  assert.match(html, /<div id="module-profit" class="container converter-home active">[\s\S]*?<h1>利润测算<\/h1>/);
 });
 
 test('guide tab and marketplace switching expose automatic UK/EU fees without invented fallbacks', () => {
@@ -932,7 +939,7 @@ test('guide tab and marketplace switching expose automatic UK/EU fees without in
   ]) assert.match(html, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
 
   assert.match(html, /country === 'MX' \|\| baseFee === null/);
-  assert.match(html, /const index = \['converter','pdf','image','removebg','currency','guide'\]\.indexOf\(name\)/);
+  assert.match(html, /const index = \['profit','converter','pdf','image','removebg','currency','guide'\]\.indexOf\(name\)/);
 });
 
 test('guide explains complex calculations, special interactions, and data-source boundaries', () => {
@@ -1016,14 +1023,15 @@ test('AI chat and dotted tooltip underlines are removed', () => {
   assert.doesNotMatch(html, /\.fba-rule-row\s*\{[^}]*dashed/);
 });
 
-test('site is branded as Amazon成本计算器 with Jager-like dashboard styling', () => {
-  assert.match(html, /<title>Amazon成本计算器<\/title>/);
-  assert.match(html, /<h1>Amazon成本计算器<\/h1>/);
+test('site keeps the original LT-TOOL visual style instead of the Jager dashboard skin', () => {
+  assert.match(html, /<title>LT-TOOL \| 利润测算<\/title>/);
+  assert.match(html, /<h1>利润测算<\/h1>/);
+  assert.match(html, /<h1>单位换算<\/h1>/);
   for (const required of [
-    '--page: #f6f7fa', '--surface: #fff', '--blue: #2962ff', '--line: #e8eaf0',
-    'border-radius: 8px', "font-family: Inter, ui-sans-serif, system-ui",
+    '--canvas: #f7f1e6', '--surface: #fffcf5', '--accent: #0f766e',
+    "font-family: 'Roboto', sans-serif", "font-family: 'Share Tech Mono', monospace",
   ]) assert.match(html, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
-  assert.doesNotMatch(html, /OMNI-MATRIX V6|智能核心/);
+  assert.doesNotMatch(html, /Jager Monitor inspired dashboard skin|--page: #f6f7fa|--blue: #2962ff|font-family: Inter, ui-sans-serif, system-ui/);
 });
 
 test('Japan marketplace uses official 2026 JPY fulfillment and storage rules', () => {
