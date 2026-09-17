@@ -4,6 +4,7 @@ import test from 'node:test';
 import vm from 'node:vm';
 
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+const uiCss = readFileSync(new URL('../furniture-calculator.css', import.meta.url), 'utf8');
 
 function indexOfSnippet(snippet) {
   const index = html.indexOf(snippet);
@@ -12,10 +13,10 @@ function indexOfSnippet(snippet) {
 }
 
 test('profit calculator is the default home module and first navigation item', () => {
-  assert.match(html, /<link rel="icon" href="data:,">/);
+  assert.match(html, /<link rel="icon" href="data:image\/svg\+xml,/);
   assert.match(
     html,
-    /<button class="nav-btn active" onclick="switchTab\('profit'\)">利润测算<\/button>/,
+    /<button class="nav-btn active"[^>]*onclick="switchTab\('profit'\)"[^>]*>亚马逊利润测算<\/button>/,
   );
   assert.match(html, /<div id="module-profit" class="container converter-home active">/);
   assert.match(html, /<div id="module-converter" class="container converter-home">/);
@@ -154,8 +155,9 @@ function loadProfitHelpers() {
     extractConstantSource('JP_REFERRAL_RULES_2026'),
     extractFunctionSource('calculateJpReferralFee'),
     extractFunctionSource('calculateAdMetrics'),
+    extractFunctionSource('calculateRefundAdministrationFee'),
     extractFunctionSource('calculateProfitMetrics'),
-    '({ calculateJpReferralFee, calculateAdMetrics, calculateProfitMetrics })',
+    '({ calculateJpReferralFee, calculateAdMetrics, calculateRefundAdministrationFee, calculateProfitMetrics })',
   ].join('\n');
   return vm.runInNewContext(code);
 }
@@ -420,20 +422,25 @@ test('profit treats unknown automatic FBA and storage costs as unavailable', () 
 });
 
 test('return handling fee is weighted by return rate', () => {
-  const { calculateProfitMetrics } = loadProfitHelpers();
+  const { calculateRefundAdministrationFee, calculateProfitMetrics } = loadProfitHelpers();
   const result = calculateProfitMetrics({ price: 1000, fx: 1, returnRate: 8, returnHandling: 100, storageCost: 0 });
   assert.equal(result.returns, 88);
+  assert.equal(calculateRefundAdministrationFee(15, 'US'), 3);
+  assert.equal(calculateRefundAdministrationFee(100, 'US'), 5);
+  assert.equal(calculateRefundAdministrationFee(100, 'CA'), 20);
+  assert.match(html, /calculateRefundAdministrationFee\(autoReferral !== null \? autoReferral : profitPrice \* profitReferralRate \/ 100, country\)/);
+  assert.match(html, /calculateRefundAdministrationFee\(autoReferral !== null \? autoReferral : safePrice \* profitReferralRate \/ 100, country\)/);
 });
 
 test('Japan price changes refresh the displayed FBA fee and use precise JPY exchange rates', () => {
-  assert.match(html, /id="adPrice"[^>]*oninput="updateAdCalculator\(\); updateCargoCheck\(\)"/);
+  assert.match(html, /id="adPrice"[^>]*oninput="syncProductPrice\('adPrice'\)"/);
   assert.match(html, /function marketFxDecimals\(currency\)/);
   assert.match(html, /currency === 'JPY' \? 6 : 2/);
   assert.match(html, /fx\.value = \(1 \/ marketRate\)\.toFixed\(marketFxDecimals\(requestedCurrency\)\)/);
   assert.match(html, /profitFx\.value = \(liveRates\.CNY \/ liveRates\[market\.currency\]\)\.toFixed\(marketFxDecimals\(market\.currency\)\)/);
 });
 
-test('detailed calculator is the default seller workflow with simple required inputs and core outputs', () => {
+test('general detailed mode is first and default while quick and furniture workflows remain available', () => {
   for (const required of [
     'id="quickModeButton"', 'id="professionalModeButton"', 'id="quickCalculator"',
     'id="quickMarket"', 'id="quickCategory"', 'id="quickPrice"', 'id="quickPurchaseRmb"',
@@ -442,9 +449,16 @@ test('detailed calculator is the default seller workflow with simple required in
     'id="quickProfitValue"', 'id="quickMarginValue"', 'id="quickMonthlyProfitValue"', 'id="quickBreakEvenPriceValue"',
     'id="quickCostBreakdown"', 'id="quickRiskList"', 'function calculateQuickEstimate', 'function updateQuickCalculator',
   ]) assert.match(html, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
-  assert.match(html, /id="professionalModeButton"[^>]*class="[^"]*active/);
+  assert.match(html, /id="professionalModeButton"[^>]*class="[^"]*active[^>]*aria-selected="true"/);
+  assert.doesNotMatch(html, /id="furnitureModeButton"[^>]*class="[^"]*active/);
+  assert.match(html, /id="furnitureCalculator"[^>]*hidden/);
   assert.match(html, /id="quickCalculator"[^>]*hidden/);
-  assert.match(html, /id="professionalWorkspace" class="converter-workspace professional-workspace">/);
+  assert.match(html, /id="professionalWorkspace" class="converter-workspace professional-workspace" role="tabpanel" aria-labelledby="professionalModeButton">/);
+  assert.match(html, /setCalculatorMode\('professional'\)/);
+  const professionalMode = indexOfSnippet('id="professionalModeButton"');
+  const quickMode = indexOfSnippet('id="quickModeButton"');
+  const furnitureMode = indexOfSnippet('id="furnitureModeButton"');
+  assert.ok(professionalMode < quickMode && quickMode < furnitureMode);
   assert.match(html, /<option value="US" selected>美国 \/ US<\/option>/);
 });
 
@@ -556,6 +570,9 @@ test('Japan standard 40cm tier keeps the low-price fee through 1,000 JPY', () =>
   const { getJpFbaMetrics } = vm.runInNewContext(code);
   assert.equal(getJpFbaMetrics([20, 10, 10], 0.2, 1000).fee, 371);
   assert.equal(getJpFbaMetrics([20, 10, 10], 0.2, 1000.01).fee, 420);
+  for (const invalidPrice of [0, -1, null, undefined, '', NaN]) {
+    assert.equal(getJpFbaMetrics([20, 10, 10], 0.2, invalidPrice).fee, 420);
+  }
 });
 
 test('Japan profit uses category referral total and keeps US manual referral behavior', () => {
@@ -618,6 +635,25 @@ test('profit calculator supports chargeable weight, cubic-foot storage, advertis
     adCost: 2, promoRate: 0, returnRate: 0, returnHandling: 0, placementFee: 0, targetMargin: 20, cvr: 0.1,
   });
   assert.equal(manualStorage.storage, 0.95);
+
+  const fullyDiscountedPurchase = calculateProfitMetrics({
+    price: 30, fx: 7.2, purchaseRmb: 50, taxDiscount: 100, fbaFee: 0, storageCost: 0,
+    targetMargin: 20,
+  });
+  assert.equal(fullyDiscountedPurchase.purchase, 0);
+  assert.equal(fullyDiscountedPurchase.maxPurchaseRmb, null);
+});
+
+test('variant weighted totals preserve unavailable required costs', () => {
+  const weightedFiniteOrNull = vm.runInNewContext(
+    extractFunctionSource('weightedFiniteOrNull') + ';weightedFiniteOrNull',
+  );
+  const complete = [{ share: 0.4, cost: 10 }, { share: 0.6, cost: 20 }];
+  assert.equal(weightedFiniteOrNull(complete, item => item.cost), 16);
+  assert.equal(weightedFiniteOrNull([{ share: 0.5, cost: 10 }, { share: 0.5, cost: null }], item => item.cost), null);
+  assert.equal(weightedFiniteOrNull([{ share: 1, cost: undefined }], item => item.cost), null);
+  assert.match(html, /const weightedTotalCost = weightedFiniteOrNull\(items, it => it\.r\.totalCost\)/);
+  assert.match(html, /const weightedProfit = weightedFiniteOrNull\(items, it => it\.r\.profit\)/);
 });
 
 test('US FBA storage forecast uses daily-average inventory, seasonal rates, rolling utilization, and FIFO shortage protection', () => {
@@ -634,6 +670,16 @@ test('US FBA storage forecast uses daily-average inventory, seasonal rates, roll
   assert.equal(getUsStorageBaseRate(10, 'oversize', false), 1.4);
   assert.equal(getUsStorageUtilizationSurcharge(23, 'standard'), 0.44);
   assert.equal(getUsStorageUtilizationSurcharge(53, 'oversize'), 1.26);
+  assert.equal(getUsStorageUtilizationSurcharge(Infinity, 'standard'), 1.88);
+
+  const zeroSalesHistory = calculateUsFbaStorageForecast({
+    startMonth: 8, openingUnits: 1000, prior13WeekSales: 0, unitVolumeFt3: 1, sizeClass: 'standard',
+    plan: Array.from({ length: 12 }, () => ({ sales: 0, restock: 0 })),
+  });
+  assert.equal(zeroSalesHistory.hasHistory, true);
+  assert.equal(zeroSalesHistory.rows[0].utilizationWeeks, Infinity);
+  assert.equal(zeroSalesHistory.rows[0].surchargeRate, 1.88);
+  assert.equal(zeroSalesHistory.rows[0].storageCost, 2660);
 
   const surchargeForecast = calculateUsFbaStorageForecast({
     startMonth: 8, openingUnits: 2300, prior13WeekSales: 1300, unitVolumeFt3: 1, sizeClass: 'standard',
@@ -712,7 +758,7 @@ test('US storage uses a forecast-period weighted allocation, including zero-sale
 test('new products defer utilization surcharges until 91 forecast days have completed', () => {
   const { calculateUsFbaStorageForecast } = loadStorageHelpers();
   const forecast = calculateUsFbaStorageForecast({
-    startMonth: 1, openingUnits: 1000, prior13WeekSales: 0, unitVolumeFt3: 1, sizeClass: 'standard',
+    startMonth: 1, openingUnits: 1000, prior13WeekSales: null, unitVolumeFt3: 1, sizeClass: 'standard',
     plan: Array.from({ length: 12 }, () => ({ sales: 100, restock: 100 })),
   });
 
@@ -923,16 +969,16 @@ test('profit exchange-rate update fetches the selected market rate and recalcula
   assert.match(html, /updateMarketCountry\(\)[\s\S]*?updateProfitExchangeRate\(\);/);
 });
 
-test('site navigation keeps profit and unit conversion as separate sidebar pages', () => {
-  assert.match(html, /body\s*\{[\s\S]*?grid-template-columns:\s*72px\s+minmax\(0,\s*1fr\)/);
-  assert.match(html, /\.nav-deck\s*\{[\s\S]*?position:\s*sticky/);
-  const navStart = html.indexOf('<div class="nav-deck">');
+test('top application bar keeps profit and unit conversion as separate pages', () => {
+  assert.match(uiCss, /body\s*\{[\s\S]*?display:\s*block/);
+  assert.match(uiCss, /Warm editorial workspace[\s\S]*?\.nav-deck\s*\{[\s\S]*?height:\s*64px/);
+  const navStart = html.indexOf('<nav class="nav-deck"');
   const pdfStart = html.indexOf('<div id="module-pdf"');
   const navMarkup = html.slice(navStart, pdfStart);
-  for (const label of ['利润测算', '单位换算', '功能说明', 'themeToggle']) assert.match(navMarkup, new RegExp(label));
+  for (const label of ['亚马逊利润测算', '单位换算', '功能说明', 'themeToggle']) assert.match(navMarkup, new RegExp(label));
   assert.doesNotMatch(navMarkup, /converter-subnav|converter-jump/);
   assert.match(html, /<div id="module-converter" class="container converter-home">[\s\S]*?<h1>单位换算<\/h1>/);
-  assert.match(html, /<div id="module-profit" class="container converter-home active">[\s\S]*?<h1>利润测算<\/h1>/);
+  assert.match(html, /<div id="module-profit" class="container converter-home active">[\s\S]*?<h1>亚马逊利润测算<\/h1>/);
 });
 
 test('guide tab and marketplace switching expose automatic UK/EU fees without invented fallbacks', () => {
@@ -944,7 +990,8 @@ test('guide tab and marketplace switching expose automatic UK/EU fees without in
   ]) assert.match(html, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
 
   assert.match(html, /country === 'MX' \|\| baseFee === null/);
-  assert.match(html, /const index = \['profit','converter','pdf','image','removebg','currency','guide'\]\.indexOf\(name\)/);
+  assert.match(html, /document\.querySelectorAll\('\.nav-primary \.nav-btn'\)/);
+  assert.match(html, /button\.dataset\.tab === name/);
 });
 
 test('guide explains complex calculations, special interactions, and data-source boundaries', () => {
@@ -956,9 +1003,9 @@ test('guide explains complex calculations, special interactions, and data-source
     '仓储/件', '英国、欧洲与其他站点仓储', '€/m³', '计费重', '体积系数', '尺寸分级',
     'CPA', 'ACoAS', '混合广告费/件', '退货成本', '保本 ACOS', '最大 CPC',
     '更新汇率', 'ExchangeRate-API', 'Frankfurter', '结果定位与提示', '缺少的字段会优先高亮',
-    'PDF 聚合', '背景移除', '主题选择', 'InventoryHero', 'Seller Central', '260630-FBA-Rate-Card-EN1.pdf',
+    'PDF 聚合', '背景移除', '主题选择', 'Amazon 2026 Rate Card', 'Seller Central', '260630-FBA-Rate-Card-EN1.pdf',
   ]) assert.match(guideMarkup, new RegExp(required.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')));
-  assert.match(guideMarkup, /href="https:\/\/www\.inventoryhero\.ai\/blog\/fba-storage-fees-2026#how-to-keep-storage-costs-down"/);
+  assert.match(guideMarkup, /href="https:\/\/supplychain\.amazon\.com\/docs\/2026-rate-card"/);
   assert.match(guideMarkup, /target="_blank" rel="noopener noreferrer"/);
   assert.match(html, /\.guide-section code\s*\{[^}]*font:/);
 });
@@ -1028,15 +1075,29 @@ test('AI chat and dotted tooltip underlines are removed', () => {
   assert.doesNotMatch(html, /\.fba-rule-row\s*\{[^}]*dashed/);
 });
 
-test('site keeps the original LT-TOOL visual style instead of the Jager dashboard skin', () => {
-  assert.match(html, /<title>LT-TOOL \| 利润测算<\/title>/);
-  assert.match(html, /<h1>利润测算<\/h1>/);
+test('site uses an original warm editorial configure surface without third-party branding', () => {
+  assert.match(html, /<title>LT-TOOL \| 亚马逊利润测算<\/title>/);
+  assert.match(html, /<h1>亚马逊利润测算<\/h1>/);
   assert.match(html, /<h1>单位换算<\/h1>/);
   for (const required of [
-    '--canvas: #f7f1e6', '--surface: #fffcf5', '--accent: #0f766e',
-    "font-family: 'Roboto', sans-serif", "font-family: 'Share Tech Mono', monospace",
-  ]) assert.match(html, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
-  assert.doesNotMatch(html, /Jager Monitor inspired dashboard skin|--page: #f6f7fa|--blue: #2962ff|font-family: Inter, ui-sans-serif, system-ui/);
+    '--canvas: #f7f3ea', '--surface: #fffdf8', '--accent: #a84b32',
+    '--font-display: Georgia', 'Primary surface: Configure', '.workspace-header', '.nav-deck',
+  ]) assert.match(uiCss, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.doesNotMatch(html + uiCss, /Claude|Anthropic|Jager Monitor inspired dashboard skin|--page: #f6f7fa|--blue: #2962ff|bootstrap|tailwind|material-ui/i);
+});
+
+test('dark theme keeps dense forms, navigation and destructive actions legible', () => {
+  for (const required of [
+    '--canvas: #171715', '--surface: #22211e', '--surface-raised: #2b2925',
+    '--text-primary: #faf7f0', '--text-muted: #d1cac0', '--text-subtle: #aaa298',
+    '--border-color: #49443e', '--border-strong: #70685f',
+    '--accent-solid: #b95f43', '--danger-solid: #b24e47',
+    ':root[data-theme="dark"] .nav-deck .nav-btn.active',
+    ':root[data-theme="dark"] input::placeholder',
+    ':root[data-theme="dark"] input:disabled',
+    ':root[data-theme="dark"] .variant-row .variant-remove',
+    ':root[data-theme="dark"] #updateTime',
+  ]) assert.match(uiCss, new RegExp(required.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
 });
 
 test('Japan marketplace uses official 2026 JPY fulfillment and storage rules', () => {
